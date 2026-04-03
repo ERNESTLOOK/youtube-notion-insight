@@ -119,6 +119,8 @@ class NotionManager:
             topics = [t['name'] for t in props.get('주제', {}).get('multi_select', [])]
             importance = props.get('중요도', {}).get('select') or {}
             # 본문에서 인사이트 텍스트 가져오기 (별도 API 호출 없이 요약으로 대체)
+            page_id = page['id'].replace('-', '')
+            notion_url = f"https://www.notion.so/{page_id}"
             results.append({
                 'title': title_items[0]['text']['content'] if title_items else '',
                 'summary': summary_items[0]['text']['content'] if summary_items else '',
@@ -127,7 +129,8 @@ class NotionManager:
                 'topic': topics[0] if topics else '기타',
                 'importance': importance.get('name', '⭐ 보통'),
                 'url': props['원본 링크']['url'] or '',
-                'insights': [],  # 주간 집계에선 summary 활용
+                'notion_url': notion_url,
+                'insights': [],
             })
         return results
 
@@ -174,12 +177,31 @@ class NotionManager:
                 callout(f"[아이디어 {i}] {a['title']}\n{a['angle']}", '✍️')
             ]
 
-        # 이번 주 영상 목록
+        # 이번 주 영상 목록 — 노션 페이지 링크 + 유튜브 링크 병기
         important = [v for v in insights if '높음' in v.get('importance', '')]
-        video_bullets = [
-            bullet(f"[{v.get('topic','기타')}] {v['title']}", v.get('url', ''))
-            for v in (important or insights)[:5]
-        ]
+        show_list = (important or insights)[:5]
+        video_bullets = []
+        for v in show_list:
+            topic = v.get('topic', '기타')
+            notion_url = v.get('notion_url', '')
+            yt_url = v.get('url', '')
+            video_bullets.append({
+                'object': 'block', 'type': 'bulleted_list_item',
+                'bulleted_list_item': {
+                    'rich_text': [
+                        {'type': 'text', 'text': {'content': f'[{topic}] '}},
+                        {'type': 'text', 'text': {
+                            'content': v['title'],
+                            'link': {'url': notion_url} if notion_url else None
+                        }},
+                        {'type': 'text', 'text': {
+                            'content': ' ↗',
+                            'link': {'url': yt_url} if yt_url else None
+                        }},
+                        {'type': 'text', 'text': {'content': f'\n→ {v.get("summary", "")}'}},
+                    ]
+                }
+            })
 
         children = [
             callout(headline, '🌍'),
