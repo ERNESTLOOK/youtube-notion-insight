@@ -1,0 +1,30 @@
+name: Weekly Trend Summary
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'    # 매주 월요일 오전 9시 KST (UTC 00:00)
+  workflow_dispatch:
+
+jobs:
+  trend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly trend
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_CHANNEL_DB_ID: ${{ secrets.NOTION_CHANNEL_DB_ID }}
+          NOTION_INSIGHT_DB_ID: ${{ secrets.NOTION_INSIGHT_DB_ID }}
+          NOTION_TREND_PARENT_ID: ${{ secrets.NOTION_TREND_PARENT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m src.weekly_trend
