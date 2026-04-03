@@ -1,5 +1,4 @@
 import os
-from collections import Counter
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from src.analyzer import GeminiAnalyzer
@@ -24,17 +23,13 @@ def run():
         print("집계할 영상 없음. 종료")
         return
 
-    keyword_counter = Counter()
-    for item in insights:
-        keyword_counter.update(item['keywords'])
-    top_keywords = [kw for kw, _ in keyword_counter.most_common(10)]
+    print("Gemini로 주간 리포트 생성 중...")
+    report = analyzer.generate_weekly_report(insights)
 
-    top_videos = insights[:3]
-    trend_text = analyzer.analyze_weekly_trend(insights)
-    week_label = datetime.now(timezone.utc).strftime('%Y-W%U')
-
-    notion.create_weekly_trend_page(week_label, trend_text, top_keywords, top_videos)
-    print(f"주간 트렌드 페이지 생성 완료: {week_label}")
+    week_label = datetime.now(timezone.utc).strftime('%Y년 %m월 %d일 주차')
+    notion.create_weekly_report_page(week_label, report, insights)
+    print(f"주간 리포트 생성 완료: {week_label}")
+    print(f"헤드라인: {report.get('headline', '')}")
 
 
 if __name__ == '__main__':

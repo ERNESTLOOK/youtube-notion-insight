@@ -20,6 +20,7 @@ def run():
 
     channels = notion.get_active_channels()
     existing_ids = notion.get_existing_video_ids()
+    today_saved = []
     print(f"채널 {len(channels)}개 모니터링 시작")
 
     for channel in channels:
@@ -42,9 +43,21 @@ def run():
             analysis = analyzer.analyze_video(video['title'], description)
             notion.save_insight(video, channel, analysis)
             existing_ids.add(video['video_id'])
+            today_saved.append({
+                'title': video['title'], 'url': video['url'],
+                'summary': analysis.get('summary', ''),
+                'topic': analysis.get('topic', '기타'),
+                'importance': analysis.get('importance', '⭐ 보통'),
+            })
             time.sleep(4)  # Gemini 무료 티어 분당 15 요청 제한 대응
 
         notion.update_channel_last_checked(channel['notion_page_id'])
+
+    # 대시보드 갱신
+    dashboard_id = os.environ.get('NOTION_DASHBOARD_ID', '')
+    if dashboard_id and today_saved:
+        notion.update_dashboard(dashboard_id, today_saved)
+        print(f"대시보드 갱신 완료 ({len(today_saved)}개)")
 
     print("완료")
 

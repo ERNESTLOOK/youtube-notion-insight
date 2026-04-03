@@ -33,4 +33,5 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_COOKIE_PATH: cookies.txt
+          NOTION_DASHBOARD_ID: ${{ secrets.NOTION_DASHBOARD_ID }}
         run: python -m src.daily_check
