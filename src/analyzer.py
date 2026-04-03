@@ -5,7 +5,7 @@ import google.generativeai as genai
 class GeminiAnalyzer:
     def __init__(self, api_key: str):
         genai.configure(api_key=api_key)
-        self._model = genai.GenerativeModel('gemini-1.5-flash')
+        self._model = genai.GenerativeModel('gemini-2.5-flash')
 
     def _parse_json_response(self, text: str) -> dict | list:
         """마크다운 코드블록 제거 후 JSON 파싱"""
