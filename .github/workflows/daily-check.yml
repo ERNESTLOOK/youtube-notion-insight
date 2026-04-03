@@ -20,6 +20,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Write YouTube cookies
+        if: ${{ secrets.YOUTUBE_COOKIES != '' }}
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+
       - name: Run daily check
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -28,4 +32,5 @@ jobs:
           NOTION_TREND_PARENT_ID: ${{ secrets.NOTION_TREND_PARENT_ID }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_COOKIE_PATH: cookies.txt
         run: python -m src.daily_check
