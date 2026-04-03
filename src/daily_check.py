@@ -2,7 +2,6 @@ import os
 import time
 from dotenv import load_dotenv
 from src.youtube_client import YouTubeClient
-from src.transcript import get_transcript
 from src.analyzer import GeminiAnalyzer
 from src.notion_manager import NotionManager
 
@@ -28,18 +27,19 @@ def run():
         if channel_id is None:
             print(f"  ⚠ 채널 ID 조회 실패: {channel['channel_id']} — 스킵")
             continue
+
         videos = yt.get_recent_videos(channel_id, hours=24)
         new_videos = [v for v in videos if v['video_id'] not in existing_ids]
         print(f"[{channel['name']}] 새 영상 {len(new_videos)}개")
 
         for video in new_videos:
-            transcript = get_transcript(video['video_id'])
-            if transcript is None:
-                print(f"  ⏭ 자막 없음: {video['title']}")
+            description = video.get('description', '').strip()
+            if not description:
+                print(f"  ⏭ 설명 없음: {video['title'][:55]}")
                 continue
 
-            print(f"  ✓ 분석 중: {video['title']}")
-            analysis = analyzer.analyze_transcript(transcript, video['title'])
+            print(f"  ✓ 분석 중: {video['title'][:55]}")
+            analysis = analyzer.analyze_video(video['title'], description)
             notion.save_insight(video, channel, analysis)
             existing_ids.add(video['video_id'])
             time.sleep(4)  # Gemini 무료 티어 분당 15 요청 제한 대응

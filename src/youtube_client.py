@@ -34,12 +34,25 @@ class YouTubeClient:
             maxResults=10
         ).execute()
 
+        video_ids = [item['id']['videoId'] for item in response.get('items', [])]
+        if not video_ids:
+            return []
+        return self.get_video_details(video_ids)
+
+    def get_video_details(self, video_ids: list[str]) -> list[dict]:
+        """영상 ID 목록으로 제목·설명·날짜 등 상세 정보 반환"""
+        response = self._service.videos().list(
+            id=','.join(video_ids),
+            part='id,snippet'
+        ).execute()
+
         return [
             {
-                'video_id': item['id']['videoId'],
+                'video_id': item['id'],
                 'title': item['snippet']['title'],
+                'description': item['snippet'].get('description', ''),
                 'published_at': item['snippet']['publishedAt'],
-                'url': f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+                'url': f"https://www.youtube.com/watch?v={item['id']}"
             }
             for item in response.get('items', [])
         ]

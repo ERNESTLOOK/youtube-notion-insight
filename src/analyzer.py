@@ -17,6 +17,29 @@ class GeminiAnalyzer:
                 text = text[4:]
         return json.loads(text.strip())
 
+    def analyze_video(self, title: str, description: str) -> dict:
+        """영상 제목과 설명으로 인사이트, 키워드, 요약 추출"""
+        content = f"제목: {title}\n\n설명:\n{description[:4000]}"
+        prompt = f"""다음은 유튜브 영상 정보입니다.
+
+아래 형식의 JSON만 출력하세요 (다른 텍스트 없이):
+{{
+  "insights": ["인사이트1", "인사이트2", "인사이트3"],
+  "keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"],
+  "summary": "한 문장 요약"
+}}
+
+규칙:
+- insights: 글 재료로 쓸 수 있는 구체적인 핵심 인사이트 3-5개
+- keywords: 이 영상의 핵심 트렌드 키워드 정확히 5개
+- summary: 글 재료로 바로 활용 가능한 한 문장
+
+영상 정보:
+{content}"""
+
+        response = self._model.generate_content(prompt)
+        return self._parse_json_response(response.text)
+
     def analyze_transcript(self, transcript: str, title: str) -> dict:
         """트랜스크립트에서 인사이트, 키워드, 요약 추출"""
         prompt = f"""다음은 유튜브 영상 "{title}"의 자막입니다.
