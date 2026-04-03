@@ -14,3 +14,5 @@ def get_transcript(video_id: str, languages: list[str] | None = None) -> str | N
         return ' '.join(entry['text'] for entry in entries)
     except (NoTranscriptFound, TranscriptsDisabled):
         return None
+    except Exception:
+        return None

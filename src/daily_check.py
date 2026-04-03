@@ -25,6 +25,9 @@ def run():
 
     for channel in channels:
         channel_id = yt.resolve_channel_id(channel['channel_id'])
+        if channel_id is None:
+            print(f"  ⚠ 채널 ID 조회 실패: {channel['channel_id']} — 스킵")
+            continue
         videos = yt.get_recent_videos(channel_id, hours=24)
         new_videos = [v for v in videos if v['video_id'] not in existing_ids]
         print(f"[{channel['name']}] 새 영상 {len(new_videos)}개")
