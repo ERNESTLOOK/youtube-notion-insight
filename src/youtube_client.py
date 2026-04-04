@@ -20,21 +20,49 @@ class YouTubeClient:
         return items[0]['id']
 
     def get_recent_videos(self, channel_id: str, hours: int = 24) -> list[dict]:
-        """최근 N시간 이내 업로드된 영상 목록 반환"""
-        published_after = (
-            datetime.now(timezone.utc) - timedelta(hours=hours)
-        ).strftime('%Y-%m-%dT%H:%M:%SZ')
+        """최근 N시간 이내 업로드된 영상 목록 반환.
 
-        response = self._service.search().list(
-            channelId=channel_id,
-            part='id,snippet',
-            type='video',
-            publishedAfter=published_after,
-            order='date',
-            maxResults=10
-        ).execute()
+        채널 업로드 플레이리스트를 직접 조회해 누락 없이 가져옵니다.
+        search() 대비 quota 비용이 낮고 인덱싱 지연 영향을 받지 않습니다.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
-        video_ids = [item['id']['videoId'] for item in response.get('items', [])]
+        # 채널의 업로드 플레이리스트 ID 조회 (UC → UU 치환)
+        uploads_playlist_id = 'UU' + channel_id[2:]
+
+        video_ids = []
+        next_page_token = None
+
+        while True:
+            kwargs = {
+                'playlistId': uploads_playlist_id,
+                'part': 'snippet',
+                'maxResults': 50,
+            }
+            if next_page_token:
+                kwargs['pageToken'] = next_page_token
+
+            response = self._service.playlistItems().list(**kwargs).execute()
+            items = response.get('items', [])
+
+            stop = False
+            for item in items:
+                published_at_str = item['snippet']['publishedAt']
+                published_at = datetime.strptime(
+                    published_at_str, '%Y-%m-%dT%H:%M:%SZ'
+                ).replace(tzinfo=timezone.utc)
+
+                if published_at < cutoff:
+                    stop = True
+                    break
+
+                video_id = item['snippet']['resourceId']['videoId']
+                video_ids.append(video_id)
+
+            if stop or not response.get('nextPageToken'):
+                break
+            next_page_token = response['nextPageToken']
+
         if not video_ids:
             return []
         return self.get_video_details(video_ids)

@@ -32,6 +32,27 @@ class NotionManager:
             })
         return channels
 
+    def get_all_channel_ids(self) -> set[str]:
+        """채널 목록 DB에 등록된 모든 채널 ID 집합 반환 (중복 방지용)"""
+        results = []
+        cursor = None
+        while True:
+            kwargs = {'database_id': self._channel_db_id}
+            if cursor:
+                kwargs['start_cursor'] = cursor
+            response = self._client.databases.query(**kwargs)
+            results.extend(response.get('results', []))
+            if not response.get('has_more'):
+                break
+            cursor = response.get('next_cursor')
+
+        ids = set()
+        for page in results:
+            items = page['properties']['채널 ID']['rich_text']
+            if items:
+                ids.add(items[0]['text']['content'])
+        return ids
+
     def get_existing_video_ids(self) -> set[str]:
         """영상 인사이트 DB에 이미 저장된 영상 ID 집합 반환"""
         response = self._client.databases.query(database_id=self._insight_db_id)
@@ -88,8 +109,10 @@ class NotionManager:
                 },
             ]
 
+        thumbnail_url = f"https://img.youtube.com/vi/{video['video_id']}/maxresdefault.jpg"
         self._client.pages.create(
             parent={'database_id': self._insight_db_id},
+            cover={'type': 'external', 'external': {'url': thumbnail_url}},
             properties=properties,
             children=children
         )
@@ -230,6 +253,27 @@ class NotionManager:
             children=children
         )
 
+    _USER_CONTEXT_EMOJI = '✏️'
+    _USER_CONTEXT_PLACEHOLDER = (
+        '💭 나의 핵심 맥락 — 여기에 직접 입력하세요.\n'
+        '예) "이번 주 관심 주제: AI 에이전트 규제 / 강의 준비 중인 키워드: 멀티모달"\n'
+        '(이 블록은 매일 자동 업데이트에도 삭제되지 않고 유지됩니다)'
+    )
+
+    def _read_user_context(self, dashboard_page_id: str) -> list[dict]:
+        """대시보드 첫 번째 블록이 사용자 맥락 callout이면 rich_text를 반환, 아니면 []."""
+        response = self._client.blocks.children.list(
+            block_id=dashboard_page_id, page_size=1
+        )
+        blocks = response.get('results', [])
+        if not blocks:
+            return []
+        first = blocks[0]
+        if (first.get('type') == 'callout'
+                and first.get('callout', {}).get('icon', {}).get('emoji') == self._USER_CONTEXT_EMOJI):
+            return first['callout'].get('rich_text', [])
+        return []
+
     def update_dashboard(self, dashboard_page_id: str, today_insights: list[dict]) -> None:
         """메인 대시보드 페이지를 오늘 인사이트로 갱신"""
 
@@ -244,6 +288,9 @@ class NotionManager:
         def divider() -> dict:
             return {'object': 'block', 'type': 'divider', 'divider': {}}
 
+        # 사용자 맥락 블록 내용 먼저 보존
+        saved_rich_text = self._read_user_context(dashboard_page_id)
+
         # 기존 블록 전체 삭제 후 새로 씀
         existing = self._client.blocks.children.list(block_id=dashboard_page_id)
         for block in existing.get('results', []):
@@ -253,7 +300,22 @@ class NotionManager:
         important = [v for v in today_insights if '높음' in v.get('importance', '')]
         others = [v for v in today_insights if '높음' not in v.get('importance', '')]
 
+        # 사용자 맥락 블록 (보존된 내용 또는 초기 안내 문구)
+        user_context_rich_text = saved_rich_text or [
+            {'type': 'text', 'text': {'content': self._USER_CONTEXT_PLACEHOLDER}}
+        ]
+        user_context_block = {
+            'object': 'block', 'type': 'callout',
+            'callout': {
+                'icon': {'type': 'emoji', 'emoji': self._USER_CONTEXT_EMOJI},
+                'color': 'gray_background',
+                'rich_text': user_context_rich_text,
+            },
+        }
+
         blocks = [
+            user_context_block,
+            divider(),
             {'object': 'block', 'type': 'callout',
              'callout': {'icon': {'type': 'emoji', 'emoji': '📡'},
                          'rich_text': [{'type': 'text', 'text': {'content': f'마지막 업데이트: {today_str} | 오늘 새 영상 {len(today_insights)}개 분석'}}]}},

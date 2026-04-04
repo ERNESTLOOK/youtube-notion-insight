@@ -8,7 +8,7 @@ from src.notion_manager import NotionManager
 load_dotenv()
 
 
-def run():
+def run(hours: int = 24):
     yt = YouTubeClient(api_key=os.environ['YOUTUBE_API_KEY'])
     analyzer = GeminiAnalyzer(api_key=os.environ['GEMINI_API_KEY'])
     notion = NotionManager(
@@ -21,7 +21,7 @@ def run():
     channels = notion.get_active_channels()
     existing_ids = notion.get_existing_video_ids()
     today_saved = []
-    print(f"채널 {len(channels)}개 모니터링 시작")
+    print(f"채널 {len(channels)}개 모니터링 시작 (최근 {hours}시간)")
 
     for channel in channels:
         channel_id = yt.resolve_channel_id(channel['channel_id'])
@@ -29,7 +29,7 @@ def run():
             print(f"  ⚠ 채널 ID 조회 실패: {channel['channel_id']} — 스킵")
             continue
 
-        videos = yt.get_recent_videos(channel_id, hours=24)
+        videos = yt.get_recent_videos(channel_id, hours=hours)
         new_videos = [v for v in videos if v['video_id'] not in existing_ids]
         print(f"[{channel['name']}] 새 영상 {len(new_videos)}개")
 
