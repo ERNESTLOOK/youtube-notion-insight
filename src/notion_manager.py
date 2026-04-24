@@ -13,7 +13,7 @@ class NotionManager:
         self._client = Client(auth=api_key)
         self._channel_db_id = channel_db_id
         self._insight_db_id = insight_db_id
-        self._trend_parent_id = trend_parent_id
+        self._trend_parent_id = trend_parent_id        self._cloudmap_id = cloudmap_id        self._persons_db_id = persons_db_id        self._cloudmap_id = cloudmap_id
 
     def get_active_channels(self) -> list[dict]:
         """활성화 체크박스가 True인 채널 목록 반환"""
@@ -371,3 +371,133 @@ class NotionManager:
                 '활성화': {'checkbox': True},
             }
         )
+
+
+    def update_persons(self, persons_from_video: list[dict]) -> None:
+                """영상 분석에서 추출된 인물들을 주요인물 목록 DB에 upsert"""
+                if not self._persons_db_id or not persons_from_video:
+                                return
+                            # 기존 인물 이름 목록 조회
+                            response = self._client.databases.query(database_id=self._persons_db_id)
+                existing = {}
+                for page in response['results']:
+                                props = page['properties']
+                                title_items = props.get('인물명', {}).get('title', [])
+                                if title_items:
+                                                    name = title_items[0]['text']['content']
+                                                    existing[name] = page['id']
+
+                            for person in persons_from_video:
+                                            name = person.get('name', '').strip()
+                                            role = person.get('role', '').strip()
+                                            domain = person.get('domain', '').strip()
+                                            if not name:
+                                                                continue
+
+                                            if name in existing:
+                                                                # 출연횟수 +1
+                                                                page_id = existing[name]
+                                                                page = self._client.pages.retrieve(page_id=page_id)
+                                                                count = page['properties'].get('출연횟수', {}).get('number', 0) or 0
+                                                                self._client.pages.update(
+                                                                    page_id=page_id,
+                                                                    properties={'출연횟수': {'number': count + 1}}
+                                                                )
+else:
+                # 새 인물 추가
+                    props = {
+                                            '인물명': {'title': [{'text': {'content': name}}]},
+                                            '출연횟수': {'number': 1},
+                    }
+                if role:
+                                        props['소속/직함'] = {'rich_text': [{'text': {'content': role}}]}
+                                    if domain:
+                                                            props['관련 분야'] = {'multi_select': [{'name': domain}]}
+                                                        self._client.pages.create(
+                                                                                parent={'database_id': self._persons_db_id},
+                                                                                properties=props
+                                                        )
+                existing[name] = True
+
+    def update_cloudmap(self, insights: list[dict]) -> None:
+                """주제별 연결 클라우드맵 페이지를 최신 인사이트 데이터 기준으로 갱신"""
+                if not self._cloudmap_id or not insights:
+                                return
+
+                from collections import Counter, defaultdict
+
+        # 주제별 영상 수 집계
+                topic_counts = Counter(v.get('topic', '기타') for v in insights)
+        # 주제 간 연결 관계 (같은 키워드를 공유하는 주제 쌍)
+        topic_keywords = defaultdict(set)
+        for v in insights:
+                        topic = v.get('topic', '기타')
+                        for kw in v.get('keywords', []):
+                                            topic_keywords[topic].add(kw)
+
+                    # 연결 관계 (공유 키워드 2개 이상인 주제 쌍)
+                    topics = list(topic_counts.keys())
+        connections = []
+        for i in range(len(topics)):
+                        for j in range(i + 1, len(topics)):
+                                            shared = topic_keywords[topics[i]] & topic_keywords[topics[j]]
+                                            if len(shared) >= 2:
+                                                                    connections.append((topics[i], topics[j], list(shared)[:3]))
+
+                                    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        total = len(insights)
+        n_topics = len(topic_counts)
+        n_connections = len(connections)
+
+        # 기존 블록 전체 삭제
+        existing = self._client.blocks.children.list(block_id=self._cloudmap_id)
+        for block in existing.get('results', []):
+                        self._client.blocks.delete(block_id=block['id'])
+
+        # 상단 메타 정보 블록
+        meta_text = f'데이터 기준: 전체 {total}편 · {n_topics}개 주제 · {n_connections}개 연결 관계 · 마지막 업데이트: {today_str}'
+        blocks = [
+                        {
+                                            'object': 'block', 'type': 'callout',
+                                            'callout': {
+                                                                    'icon': {'type': 'emoji', 'emoji': '🗺️'},
+                                                                    'rich_text': [{'type': 'text', 'text': {'content': meta_text}}]
+                                            }
+                        },
+                        {'object': 'block', 'type': 'heading_2',
+                                      'heading_2': {'rich_text': [{'text': {'content': '🧠 주제별 영상 분포'}}]}},
+        ]
+
+        # 주제별 영상 수 목록
+        for topic, count in topic_counts.most_common():
+                        bar = '█' * min(count, 20)
+            blocks.append({
+                                'object': 'block', 'type': 'paragraph',
+                                'paragraph': {'rich_text': [{'type': 'text', 'text': {
+                                                        'content': f'{topic}: {bar} ({count}편)'
+                                }}]}
+            })
+
+        blocks.append({'object': 'block', 'type': 'divider', 'divider': {}})
+        blocks.append({
+                        'object': 'block', 'type': 'heading_2',
+                        'heading_2': {'rich_text': [{'text': {'content': '🔗 주제 간 연결 관계'}}]}
+        })
+
+        if connections:
+                        for t1, t2, shared_kws in connections:
+                                            blocks.append({
+                                                                    'object': 'block', 'type': 'bulleted_list_item',
+                                                                    'bulleted_list_item': {'rich_text': [{'type': 'text', 'text': {
+                                                                                                'content': f'{t1} ↔ {t2}  |  공유 키워드: {", ".join(shared_kws)}'
+                                                                    }}]}
+                                            })
+else:
+            blocks.append({
+                                'object': 'block', 'type': 'paragraph',
+                                'paragraph': {'rich_text': [{'type': 'text', 'text': {
+                                                        'content': '아직 연결 관계가 형성될 만큼 데이터가 충분하지 않습니다.'
+                                }}]}
+            })
+
+        self._client.blocks.children.append(block_id=self._cloudmap_id, children=blocks)
